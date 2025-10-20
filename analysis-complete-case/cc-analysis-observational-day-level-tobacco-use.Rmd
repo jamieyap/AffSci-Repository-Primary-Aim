@@ -1,0 +1,337 @@
+---
+title: "Affective Science MRT: Day-Level Analysis - Association between Engagement and Tobacco Use"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: 
+  html_document:
+    toc: TRUE
+    toc_depth: 4
+    number_sections: TRUE
+---
+
+<style type="text/css">
+.main-container {
+  max-width: 1800px !important;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(tidy = TRUE)
+knitr::opts_chunk$set(fig.pos = 'H')
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE)
+options(width = 7000)
+```
+
+```{r}
+source("paths.R")
+library(knitr)
+library(tidyverse)
+library(geepack)
+source("setup-data.R")
+```
+
+```{r}
+is_dir_exist <- file.exists(file.path("analysis-complete-case", "formatted-output"))
+
+if(isFALSE(is_dir_exist)){
+  dir.create(file.path("analysis-complete-case", "formatted-output"))
+}
+
+is_dir_exist <- file.exists(file.path("analysis-complete-case", "formatted-output", "Exploratory-Analysis-Associational-Tobacco-Use"))
+
+if(isFALSE(is_dir_exist)){
+  dir.create(file.path("analysis-complete-case", "formatted-output", "Exploratory-Analysis-Associational-Tobacco-Use"))
+}
+```
+
+```{r}
+these_baseline_variables <- c("age", "is_male", "is_latino", "is_not_latino_and_black", "is_not_latino_and_other", "baseline_tobacco_history", "has_partner", "income_val")
+
+dat_baseline <- dat_primary_aim %>%
+  select(participant_id, all_of(these_baseline_variables)) %>%
+  unique(.)
+
+dat_for_analysis <- dat_primary_aim %>%
+  select(participant_id, cluster_id, decision_point,
+         Y, substance_is_any_tobacco, eligibility, coinflip, is_high_effort, is_low_effort) %>%
+  mutate(coinflip = replace(coinflip, eligibility == 0, 0)) %>%
+  group_by(participant_id, cluster_id) %>%
+  summarise(n_elig = sum(eligibility),
+            n_any_prompt = sum(coinflip),
+            n_obs_engaged = sum(!is.na(Y)),
+            n_obs_nic = sum(!is.na(substance_is_any_tobacco)),
+            n_engaged = sum(Y, na.rm = TRUE),
+            n_nic = sum(substance_is_any_tobacco, na.rm = TRUE)) %>%
+  ungroup(.)
+```
+
+```{r}
+dat_for_analysis <- dat_for_analysis %>%
+  mutate(n_nic_lag1 = lag(n_nic),
+         n_elig_lag1 = lag(n_elig),
+         n_obs_nic_lag1 = lag(n_obs_nic),
+         n_engaged_lag1 = lag(n_engaged)) %>%
+  mutate(n_any_prompt_lag1 = lag(n_any_prompt)) %>%
+  mutate(n_obs_nic_lead1 = lead(n_obs_nic),
+         n_nic_lead1 = lead(n_nic),
+         n_elig_lead1 = lead(n_elig)) %>%
+  mutate(any_nic = 1*(n_nic > 0),
+         any_nic_lag1 = 1*(n_nic_lag1 > 0),
+         any_nic_lead1 = 1*(n_nic_lead1 > 0)) %>%
+  mutate(any_engaged = 1*(n_engaged > 0),
+         any_engaged_lag1 = 1*(n_engaged_lag1 > 0)) %>%
+  filter(cluster_id >= 1 & cluster_id <= 8)
+```
+
+```{r}
+dat_for_analysis <- left_join(x = dat_for_analysis, y = dat_baseline, by = join_by(participant_id == participant_id))
+```
+
+# Association between engagement in self-regulatory strategies and tobacco use on current day
+
+$$
+\mathrm{logit} Pr \left( \text{ANY TOBACCO USE}_{i,d} = 1 \Bigg| \sum_{b = 1}^6 I_{i, d, b} \geq 1, \text{control covariates}, \text{NO. OF TIMES ENGAGED}_{i,d} \right) = \beta_0 + \text{c_age}\beta_1 + \text{c_is_male}\beta_2 + \text{c_is_latino}\beta_3 + \text{c_is_not_latino_and_black}\beta_4 + \text{c_is_not_latino_and_other}\beta_5 + \text{c_baseline_tobacco_history}\beta_6 + \text{c_has_partner}\beta_7 + \text{c_income_val}\beta_8 + \text{c_any_prompt_counts}_{i,d}\beta_9 + \text{NO. TIMES ENGAGED}_{i,d} \beta_{10}
+$$
+
+```{r}
+dat_logreg <- dat_for_analysis %>% 
+  filter(n_elig > 0) %>%
+  filter(n_elig == n_obs_nic) %>%
+  select(participant_id, cluster_id, 
+         n_elig, n_obs_nic, n_any_prompt,
+         any_nic, n_engaged,
+         age, is_male, is_latino, is_not_latino_and_black, is_not_latino_and_other, 
+         baseline_tobacco_history, has_partner, income_val) %>%
+  mutate(drop_row = if_else(!complete.cases(.), 1, 0)) %>%
+  filter(drop_row == 0)
+```
+
+Some summary statistics on the smoking outcome:
+```{r}
+dat_logreg %>%
+  group_by(any_nic) %>%
+  summarise(n_participant_days_any = n())
+```
+
+```{r}
+dat_tmp <- dat_logreg %>% 
+  select(participant_id,
+         age, is_male, is_latino, is_not_latino_and_black, is_not_latino_and_other, 
+         baseline_tobacco_history, has_partner, income_val) %>%
+  unique(.)
+```
+
+```{r}
+dat_tmp_summary <- dat_tmp %>%
+  summarise(m_age = mean(age),
+            m_is_male = mean(is_male),
+            m_is_latino = mean(is_latino),
+            m_is_not_latino_and_black = mean(is_not_latino_and_black),
+            m_is_not_latino_and_other = mean(is_not_latino_and_other),
+            m_baseline_tobacco_history = mean(baseline_tobacco_history),
+            m_has_partner = mean(has_partner),
+            m_income_val = mean(income_val))
+```
+
+```{r}
+dat_logreg <- cbind(dat_logreg, dat_tmp_summary)
+```
+
+```{r}
+dat_tmp2 <- dat_logreg %>% select(participant_id, cluster_id, n_any_prompt)
+```
+
+```{r}
+dat_tmp2_summary <- dat_tmp2 %>%
+  group_by(cluster_id) %>%
+  summarise(m_any_prompt_counts = mean(n_any_prompt))
+```
+
+```{r}
+dat_logreg <- left_join(x = dat_logreg, y = dat_tmp2_summary, by = join_by(cluster_id == cluster_id))
+```
+
+```{r}
+dat_logreg <- dat_logreg %>%
+  mutate(c_age = age - m_age,
+         c_is_male = is_male - m_is_male, 
+         c_is_latino = is_latino - m_is_latino, 
+         c_is_not_latino_and_black = is_not_latino_and_black - m_is_not_latino_and_black, 
+         c_is_not_latino_and_other = is_not_latino_and_other - m_is_not_latino_and_other, 
+         c_baseline_tobacco_history = baseline_tobacco_history - m_baseline_tobacco_history, 
+         c_has_partner = has_partner - m_has_partner, 
+         c_income_val = income_val - m_income_val) %>%
+  mutate(c_any_prompt_counts = n_any_prompt - m_any_prompt_counts)
+```
+
+```{r}
+# fit <- geeglm(any_nic ~ c_age + c_is_male + c_is_latino + c_is_not_latino_and_black + c_is_not_latino_and_other + c_baseline_tobacco_history + c_has_partner + c_income_val + c_any_prompt_counts + n_engaged, 
+#               family = "binomial", 
+#               data = dat_logreg, 
+#               id = participant_id, 
+#               waves = cluster_id)
+
+fit <- geeglm(any_nic ~ c_age + c_is_male + c_is_latino + c_is_not_latino_and_black + c_baseline_tobacco_history + c_has_partner + c_income_val + c_any_prompt_counts + n_engaged, 
+              family = "binomial", 
+              data = dat_logreg, 
+              id = participant_id, 
+              waves = cluster_id)
+```
+
+```{r}
+dat_results <- summary(fit)[["coefficients"]]
+
+dat_results[["LB95"]] <- dat_results$Estimate - qnorm(0.975) * dat_results$Std.err
+dat_results[["UB95"]] <- dat_results$Estimate + qnorm(0.975) * dat_results$Std.err
+
+dat_results[["LB90"]] <- dat_results$Estimate - qnorm(0.95) * dat_results$Std.err
+dat_results[["UB90"]] <- dat_results$Estimate + qnorm(0.95) * dat_results$Std.err
+
+
+dat_results_logodds_scale <- dat_results
+dat_results_logodds_scale %>% round(., 3)
+
+# Format output to 3 decimal places
+dat_results_logodds_scale %>% round(., 3) %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "Exploratory-Analysis-Associational-Tobacco-Use", "day_level_log_odds_scale_concurrent.csv"), row.names = TRUE)
+```
+
+```{r}
+dat_results_odds_scale <- data.frame(estimate = exp(dat_results$Estimate), 
+                                     # 95% CI
+                                     LB95 = exp(dat_results[["LB95"]]), 
+                                     UB95 = exp(dat_results[["UB95"]]),
+                                     # 90% CI
+                                     LB90 = exp(dat_results[["LB90"]]), 
+                                     UB90 = exp(dat_results[["UB90"]]))
+
+row.names(dat_results_odds_scale) <- row.names(dat_results_logodds_scale)
+
+dat_results_odds_scale %>% round(., 3)
+
+# Format output to 3 decimal places
+dat_results_odds_scale %>% round(., 3) %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "Exploratory-Analysis-Associational-Tobacco-Use", "day_level_odds_scale_concurrent.csv"), row.names = TRUE)
+```
+
+
+# Association between engagement in self-regulatory strategies and tobacco use on next day
+
+$$
+\mathrm{logit} Pr \left( \text{ANY TOBACCO USE}_{i,d + 1} = 1 \Bigg| \left\{\sum_{b = 1}^6 I_{i,d, b} \geq 1\right\} \cap \left\{\sum_{b = 1}^6 I_{i,d+1, b} \geq 1\right\} , \text{control covariates}, \text{NO. OF TIMES ENGAGED}_{i,d} \right) = \beta_0 + \text{c_age}\beta_1 + \text{c_is_male}\beta_2 + \text{c_is_latino}\beta_3 + \text{c_is_not_latino_and_black}\beta_4 + \text{c_is_not_latino_and_other}\beta_5 + \text{c_baseline_tobacco_history}\beta_6 + \text{c_has_partner}\beta_7 + \text{c_income_val}\beta_8 + \text{c_any_prompt_counts}_{i,d}\beta_9 + \text{ANY TOBACCO USE}_{i,d}\beta_{10} + \text{NO. TIMES ENGAGED}_{i,d} \beta_{11}
+$$
+
+```{r}
+dat_logreg <- dat_for_analysis %>% 
+  filter((n_elig > 0) & (n_elig_lead1 > 0)) %>%
+  filter((n_elig == n_obs_nic) & (n_elig_lead1 == n_obs_nic_lead1)) %>%
+  select(participant_id, cluster_id, 
+         n_elig, n_obs_nic, n_any_prompt,
+         n_elig_lead1, n_obs_nic_lead1,
+         any_nic, n_engaged,
+         any_nic_lead1,
+         age, is_male, is_latino, is_not_latino_and_black, is_not_latino_and_other, 
+         baseline_tobacco_history, has_partner, income_val) %>%
+  mutate(drop_row = if_else(!complete.cases(.), 1, 0)) %>%
+  filter(drop_row == 0)
+```
+
+Some summary statistics on the smoking outcome:
+```{r}
+dat_logreg %>%
+  group_by(any_nic_lead1) %>%
+  summarise(n_participant_days_any = n())
+```
+
+```{r}
+dat_tmp <- dat_logreg %>% 
+  select(participant_id,
+         age, is_male, is_latino, is_not_latino_and_black, is_not_latino_and_other, 
+         baseline_tobacco_history, has_partner, income_val) %>%
+  unique(.)
+```
+
+```{r}
+dat_tmp_summary <- dat_tmp %>%
+  summarise(m_age = mean(age),
+            m_is_male = mean(is_male),
+            m_is_latino = mean(is_latino),
+            m_is_not_latino_and_black = mean(is_not_latino_and_black),
+            m_is_not_latino_and_other = mean(is_not_latino_and_other),
+            m_baseline_tobacco_history = mean(baseline_tobacco_history),
+            m_has_partner = mean(has_partner),
+            m_income_val = mean(income_val))
+```
+
+```{r}
+dat_logreg <- cbind(dat_logreg, dat_tmp_summary)
+```
+
+```{r}
+dat_tmp2 <- dat_logreg %>% select(participant_id, cluster_id, n_any_prompt, any_nic)
+```
+
+```{r}
+dat_tmp2_summary <- dat_tmp2 %>%
+  group_by(cluster_id) %>%
+  summarise(m_any_prompt_counts = mean(n_any_prompt),
+            m_any_nic = mean(any_nic))
+```
+
+```{r}
+dat_logreg <- left_join(x = dat_logreg, y = dat_tmp2_summary, by = join_by(cluster_id == cluster_id))
+```
+
+```{r}
+dat_logreg <- dat_logreg %>%
+  mutate(c_age = age - m_age,
+         c_is_male = is_male - m_is_male, 
+         c_is_latino = is_latino - m_is_latino, 
+         c_is_not_latino_and_black = is_not_latino_and_black - m_is_not_latino_and_black, 
+         c_is_not_latino_and_other = is_not_latino_and_other - m_is_not_latino_and_other, 
+         c_baseline_tobacco_history = baseline_tobacco_history - m_baseline_tobacco_history, 
+         c_has_partner = has_partner - m_has_partner, 
+         c_income_val = income_val - m_income_val) %>%
+  mutate(c_any_prompt_counts = n_any_prompt - m_any_prompt_counts,
+         c_any_nic = any_nic - m_any_nic)
+```
+
+```{r}
+#fit <- geeglm(any_nic_lead1 ~ c_age + c_is_male + c_is_latino + c_is_not_latino_and_black + c_is_not_latino_and_other + c_baseline_tobacco_history + c_has_partner + c_income_val + c_any_prompt_counts + c_any_nic + n_engaged, family = "binomial", data = dat_logreg, id = participant_id, waves = cluster_id)
+
+fit <- geeglm(any_nic_lead1 ~ c_age + c_is_male + c_is_latino + c_is_not_latino_and_black + c_baseline_tobacco_history + c_has_partner + c_income_val + c_any_prompt_counts + c_any_nic + n_engaged, family = "binomial", data = dat_logreg, id = participant_id, waves = cluster_id)
+```
+
+```{r}
+dat_results <- summary(fit)[["coefficients"]]
+
+dat_results[["LB95"]] <- dat_results$Estimate - qnorm(0.975) * dat_results$Std.err
+dat_results[["UB95"]] <- dat_results$Estimate + qnorm(0.975) * dat_results$Std.err
+
+dat_results[["LB90"]] <- dat_results$Estimate - qnorm(0.95) * dat_results$Std.err
+dat_results[["UB90"]] <- dat_results$Estimate + qnorm(0.95) * dat_results$Std.err
+
+dat_results_logodds_scale <- dat_results
+dat_results_logodds_scale %>% round(., 3)
+
+# Format output to 3 decimal places
+dat_results_logodds_scale %>% round(., 3) %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "Exploratory-Analysis-Associational-Tobacco-Use", "day_level_log_odds_scale_lagged.csv"), row.names = TRUE)
+```
+
+```{r}
+dat_results_odds_scale <- data.frame(estimate = exp(dat_results$Estimate), 
+                                     # 95% CI
+                                     LB95 = exp(dat_results[["LB95"]]), 
+                                     UB95 = exp(dat_results[["UB95"]]),
+                                     # 90% CI
+                                     LB90 = exp(dat_results[["LB90"]]), 
+                                     UB90 = exp(dat_results[["UB90"]]))
+
+row.names(dat_results_odds_scale) <- row.names(dat_results_logodds_scale)
+
+dat_results_odds_scale %>% round(., 3)
+
+# Format output to 3 decimal places
+dat_results_odds_scale %>% round(., 3) %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "Exploratory-Analysis-Associational-Tobacco-Use", "day_level_odds_scale_lagged.csv"), row.names = TRUE)
+```
+
+

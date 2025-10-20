@@ -1,0 +1,8 @@
+"","x"
+"1","# A tibble: 3 × 3"
+"2","# Groups:   is_high_effort [2]"
+"3","  is_high_effort is_low_effort  mu_Y"
+"4","           <dbl>         <dbl> <dbl>"
+"5","1              1             0 0.694"
+"6","2              0             1 0.633"
+"7","3              0             0 0.572"

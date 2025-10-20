@@ -4,18 +4,26 @@ library(dplyr)
 library(lubridate)
 library(readxl)
 
-# Code book
-codebook_affsci_mrt <- read_excel(path = file.path(path_raw_data, "codebook_affsci_mrt.xlsx"))
-
 # Master list of enrolled participants and V1 dates
-v1_visit_dates <- readRDS(file = file.path(path_raw_data, "v1_visit_dates.RDS"))
+v1_visit_dates <- readRDS(file.path(path_raw_data, "2025-6-25-Affective Science MRT", "EMA-MRT", "v1.0.0", "Data for analysis", "v1_visit_dates.RDS"))
+
+# Code book for EMA data
+codebook_affsci_mrt <- read_excel(file.path(path_raw_data, "2025-6-25-Affective Science MRT", "EMA-MRT", "v1.0.0", "Data for analysis", "codebook_affsci_mrt.xlsx"))
 
 # Data from two-question survey, micro-randomizations, and EMA
-dat_affsci <- readRDS(file = file.path(path_raw_data, "data_final.RDS"))
-dat_affsci_integers <- readRDS(file = file.path(path_raw_data, "data_final_integers.RDS"))
+dat_affsci <- readRDS(file.path(path_raw_data, "2025-6-25-Affective Science MRT", "EMA-MRT", "v1.0.0", "Data for analysis", "data_final.RDS"))
+dat_affsci_integers <- readRDS(file.path(path_raw_data, "2025-6-25-Affective Science MRT", "EMA-MRT", "v1.0.0", "Data for analysis", "data_final_integers.RDS"))
+
+# Codebook for study visit data
+codebook_mrt <- read_excel(file.path(path_raw_data, "2025-6-25-Affective Science MRT", "Questionnaire", "v1.0.0", "MRT Data for analysis", "codebook_mrt.xlsx"))
+
+# Study visit data
+v3_quest_mrt <- readRDS(file.path(path_raw_data, "2025-6-25-Affective Science MRT", "Questionnaire", "v1.0.0", "MRT Data for analysis", "v3_quest_mrt.rds"))
+v4_quest_6_month_mrt <- readRDS(file.path(path_raw_data, "2025-6-25-Affective Science MRT", "Questionnaire", "v1.0.0", "MRT Data for analysis", "v4_quest_6_month_mrt.rds"))
 
 # Demographics data
-# --- ADD CODE HERE ---
+dat_demogs <- readRDS(file = file.path(path_raw_data, "2025-6-19-AffSci MRT Data", "dat_demogs.RDS"))
+codebook_dat_demogs <- read_excel(file.path(path_raw_data, "2025-6-19-AffSci MRT Data", "dat_demogs_codebook.xlsx"))
 
 ###############################################################################
 # Data cleaning step for:
@@ -55,6 +63,77 @@ dat_affsci <- dat_affsci %>% mutate(ec_study_day_int = if_else(is.na(ec_study_da
 dat_affsci <- dat_affsci %>% mutate(ec_block_calc = if_else(is.na(ec_block_calc), decision_point - 6*(ec_study_day_int - 1) -1, ec_block_calc))
 
 ###############################################################################
+# Create demographics variables
+###############################################################################
+
+dat_demogs <- dat_demogs %>%
+  mutate(has_partner = case_when(
+    partner_status_category == "living with significant other" ~ 1,
+    partner_status_category == "married" ~ 1,
+    partner_status_category == "divorced" ~ 0,
+    partner_status_category == "separated" ~ 0,
+    partner_status_category == "single" ~ 0,
+    partner_status_category == "widowed" ~ 0,
+    .default = NULL
+  )) %>%
+  mutate(is_male = case_when(
+    gender_category == "male" ~ 1,
+    gender_category == "female" ~ 0,
+    gender_category == "other" ~ 0,
+    .default = NULL
+  )) %>%
+  mutate(is_latino = case_when(
+    is_latino_category == "latino" ~ 1,
+    is_latino_category == "not latino" ~ 0,
+    .default = NULL
+  )) %>%
+  mutate(is_not_latino_and_black = case_when(
+    (is_latino_category == "not latino") & (race_is_black_or_african_american == 1) ~ 1,
+    (is_latino_category == "not latino") & (race_is_black_or_african_american == 0) ~ 0,
+    is_latino_category == "latino" ~ 0,
+    .default = NULL
+  )) %>%
+  mutate(is_not_latino_and_white = case_when(
+    (is_latino_category == "not latino") & (race_is_white == 1) ~ 1,
+    (is_latino_category == "not latino") & (race_is_white == 0) ~ 0,
+    is_latino_category == "latino" ~ 0,
+    .default = NULL
+  )) %>%
+  mutate(is_not_latino_and_other = case_when(
+    (is_latino_category == "not latino") & (num_checked_race > 1) ~ 1,
+    (is_latino_category == "not latino") & (num_checked_race == 1) & (race_is_asian == 1) ~ 1,
+    (is_latino_category == "not latino") & (num_checked_race == 1) & (race_is_native_hawaiian_or_other_pacific_islander == 1) ~ 1,
+    (is_latino_category == "not latino") & (num_checked_race == 1) & (race_is_american_indian_or_alaska_native == 1) ~ 1,
+    (is_latino_category == "not latino") & (num_checked_race == 1) & (race_is_black_or_african_american == 1) ~ 0,
+    (is_latino_category == "not latino") & (num_checked_race == 1) & (race_is_white == 1) ~ 0,
+    is_latino_category == "latino" ~ 0,
+    .default = NULL
+  )) %>%
+  # Handle coding for multiracial
+  mutate(is_not_latino_and_black = replace(is_not_latino_and_black, is_not_latino_and_other == 1, 0),
+         is_not_latino_and_white = replace(is_not_latino_and_white, is_not_latino_and_other == 1, 0)) %>%
+  rename(age = age,
+         is_male = is_male, 
+         is_latino = is_latino, 
+         is_not_latino_and_black = is_not_latino_and_black, 
+         is_not_latino_and_white = is_not_latino_and_white, 
+         is_not_latino_and_other = is_not_latino_and_other, 
+         baseline_tobacco_history = baseline_tobacco_history, 
+         has_partner = has_partner, 
+         income_val = income_val)
+
+# Create missing data indicators for counting number of participants 
+# having missing values in the demographic variables
+dat_demogs <- dat_demogs %>%
+  mutate(is_missing_age = if_else(is.na(age), 1, 0),
+         is_missing_gender = if_else(is.na(gender_category), 1, 0),
+         is_missing_race_and_ethnicity = if_else(is.na(race_and_ethnicity), 1, 0),
+         is_missing_baseline_tobacco_history = if_else(is.na(baseline_tobacco_history), 1, 0),
+         is_missing_partner_status = if_else(is.na(partner_status_category), 1, 0),
+         is_missing_income = if_else(is.na(income_val), 1, 0)) %>%
+  mutate(is_missing_any_demog_data = if_else(is_missing_age + is_missing_gender + is_missing_race_and_ethnicity + is_missing_baseline_tobacco_history + is_missing_partner_status + is_missing_income >= 1, 1, 0))
+
+###############################################################################
 # Which participants did not have any mhealth data during 10-day MRT period?
 ###############################################################################
 
@@ -80,6 +159,15 @@ mars_ids_did_not_meet_ema_completion_criteria <- dat_summary_ncompleted_ema %>%
 
 dat_affsci <- dat_affsci %>% 
   filter(!(mars_id %in% mars_ids_did_not_meet_ema_completion_criteria))
+
+###############################################################################
+# Merge demographics to dataset
+###############################################################################
+dat_demogs_for_affsci <- dat_demogs %>% 
+  filter(!(mars_id %in% mars_ids_did_not_have_mhealth_data_within_mrt_period)) %>%
+  filter(!(mars_id %in% mars_ids_did_not_meet_ema_completion_criteria))
+
+dat_affsci <- left_join(x = dat_affsci, y = dat_demogs_for_affsci, by = join_by("mars_id" == "mars_id"))
 
 ###############################################################################
 # Process checks
@@ -117,12 +205,14 @@ dat_summary_empirical_prob <- data.frame(condition = c("No Prompt",
 
 # Number of minutes elapsed ---------------------------------------------------
 # From start of block to when 2qs was triggered
+
 block_start_until_two_question_survey_triggered <- dat_affsci %>% 
-  mutate(mins_elapsed = (ep_2qs_start_unix - ec_block_start_unix)/60) %>% 
+  mutate(mins_elapsed = (ep_2qs_delivered_unix - ec_block_start_unix)/60) %>% 
   filter(ep_2qs_status != "undelivered") %>% 
   summarise(what = "From start of block to when 2qs was triggered",
             mean_mins = mean(mins_elapsed, na.rm=TRUE),
             q0 = quantile(mins_elapsed, probs = 0),
+            q1 = quantile(mins_elapsed, probs = .01, na.rm = TRUE),
             q10 = quantile(mins_elapsed, probs = .10),
             q20 = quantile(mins_elapsed, probs = .20),
             q30 = quantile(mins_elapsed, probs = .30),
@@ -132,57 +222,93 @@ block_start_until_two_question_survey_triggered <- dat_affsci %>%
             q70 = quantile(mins_elapsed, probs = .70),
             q80 = quantile(mins_elapsed, probs = .80),
             q90 = quantile(mins_elapsed, probs = .90),
+            q99 = quantile(mins_elapsed, probs = .99),
             q100 = quantile(mins_elapsed, probs = 1))
 
 list_collect_process_checks <- append(list_collect_process_checks, list(block_start_until_two_question_survey_triggered))
 
 # Number of minutes elapsed ---------------------------------------------------
 # From when 2qs was triggered to when 2qs was completed or closed
+
 two_question_survey_triggered_until_closed <- dat_affsci %>% 
-  mutate(mins_elapsed = (ep_2qs_end_unix - ep_2qs_start_unix)/60) %>% 
+  mutate(mins_elapsed = (ep_2qs_status_update_unix - ep_2qs_delivered_unix)/60) %>% 
   filter(ep_2qs_status != "undelivered") %>% 
   summarise(what = "From when 2qs was triggered to when 2qs was completed or closed",
             mean_mins = mean(mins_elapsed, na.rm=TRUE),
-            q0 = quantile(mins_elapsed, probs = 0, na.rm=TRUE),
-            q10 = quantile(mins_elapsed, probs = .10, na.rm=TRUE),
-            q20 = quantile(mins_elapsed, probs = .20, na.rm=TRUE),
-            q30 = quantile(mins_elapsed, probs = .30, na.rm=TRUE),
-            q40 = quantile(mins_elapsed, probs = .40, na.rm=TRUE),
-            q50 = quantile(mins_elapsed, probs = .50, na.rm=TRUE),
-            q60 = quantile(mins_elapsed, probs = .60, na.rm=TRUE),
-            q70 = quantile(mins_elapsed, probs = .70, na.rm=TRUE),
-            q80 = quantile(mins_elapsed, probs = .80, na.rm=TRUE),
-            q90 = quantile(mins_elapsed, probs = .90, na.rm=TRUE),
-            q100 = quantile(mins_elapsed, probs = 1, na.rm=TRUE))
+            q0 = quantile(mins_elapsed, probs = 0, na.rm = TRUE),
+            q1 = quantile(mins_elapsed, probs = .01, na.rm = TRUE),
+            q10 = quantile(mins_elapsed, probs = .10, na.rm = TRUE),
+            q20 = quantile(mins_elapsed, probs = .20, na.rm = TRUE),
+            q30 = quantile(mins_elapsed, probs = .30, na.rm = TRUE),
+            q40 = quantile(mins_elapsed, probs = .40, na.rm = TRUE),
+            q50 = quantile(mins_elapsed, probs = .50, na.rm = TRUE),
+            q60 = quantile(mins_elapsed, probs = .60, na.rm = TRUE),
+            q70 = quantile(mins_elapsed, probs = .70, na.rm = TRUE),
+            q80 = quantile(mins_elapsed, probs = .80, na.rm = TRUE),
+            q90 = quantile(mins_elapsed, probs = .90, na.rm = TRUE),
+            q99 = quantile(mins_elapsed, probs = .99, na.rm = TRUE),
+            q100 = quantile(mins_elapsed, probs = 1, na.rm = TRUE))
 
 list_collect_process_checks <- append(list_collect_process_checks, list(two_question_survey_triggered_until_closed))
 
 # Number of minutes elapsed ---------------------------------------------------
 # From when 2qs was completed or closed to when micro-randomization occurred
 
+two_question_survey_closed_until_rand <- dat_affsci %>% 
+  mutate(mins_elapsed = (ep_rand_unix - ep_2qs_responded_unix)/60) %>% 
+  filter(ep_2qs_status != "undelivered") %>% 
+  summarise(what = "From when 2qs was completed or closed to micro-randomization",
+            mean_mins = mean(mins_elapsed, na.rm=TRUE),
+            q0 = quantile(mins_elapsed, probs = 0, na.rm = TRUE),
+            q1 = quantile(mins_elapsed, probs = .01, na.rm = TRUE),
+            q10 = quantile(mins_elapsed, probs = .10, na.rm = TRUE),
+            q20 = quantile(mins_elapsed, probs = .20, na.rm = TRUE),
+            q30 = quantile(mins_elapsed, probs = .30, na.rm = TRUE),
+            q40 = quantile(mins_elapsed, probs = .40, na.rm = TRUE),
+            q50 = quantile(mins_elapsed, probs = .50, na.rm = TRUE),
+            q60 = quantile(mins_elapsed, probs = .60, na.rm = TRUE),
+            q70 = quantile(mins_elapsed, probs = .70, na.rm = TRUE),
+            q80 = quantile(mins_elapsed, probs = .80, na.rm = TRUE),
+            q90 = quantile(mins_elapsed, probs = .90, na.rm = TRUE),
+            q99 = quantile(mins_elapsed, probs = .99, na.rm = TRUE),
+            q100 = quantile(mins_elapsed, probs = 1, na.rm = TRUE))
 
-# --- ADD CODE HERE ---
-
-
-
+list_collect_process_checks <- append(list_collect_process_checks, list(two_question_survey_closed_until_rand))
 
 # Number of minutes elapsed ---------------------------------------------------
 # From when micro-randomization occurred to when EMA was delivered
 
+rand_until_ema_triggered <- dat_affsci %>% 
+  mutate(mins_elapsed = (ep_delivered_unix - ep_rand_unix)/60) %>% 
+  filter(ep_2qs_status != "undelivered") %>% 
+  summarise(what = "From micro-randomization to when EMA was delivered",
+            mean_mins = mean(mins_elapsed, na.rm=TRUE),
+            q0 = quantile(mins_elapsed, probs = 0, na.rm = TRUE),
+            q1 = quantile(mins_elapsed, probs = .01, na.rm = TRUE),
+            q10 = quantile(mins_elapsed, probs = .10, na.rm = TRUE),
+            q20 = quantile(mins_elapsed, probs = .20, na.rm = TRUE),
+            q30 = quantile(mins_elapsed, probs = .30, na.rm = TRUE),
+            q40 = quantile(mins_elapsed, probs = .40, na.rm = TRUE),
+            q50 = quantile(mins_elapsed, probs = .50, na.rm = TRUE),
+            q60 = quantile(mins_elapsed, probs = .60, na.rm = TRUE),
+            q70 = quantile(mins_elapsed, probs = .70, na.rm = TRUE),
+            q80 = quantile(mins_elapsed, probs = .80, na.rm = TRUE),
+            q90 = quantile(mins_elapsed, probs = .90, na.rm = TRUE),
+            q99 = quantile(mins_elapsed, probs = .99, na.rm = TRUE),
+            q100 = quantile(mins_elapsed, probs = 1, na.rm = TRUE))
 
-# --- ADD CODE HERE ---
-
-
-
+list_collect_process_checks <- append(list_collect_process_checks, list(rand_until_ema_triggered))
 
 # Number of minutes elapsed ---------------------------------------------------
 # From when EMA was delivered and when EMA was completed or closed
+
 ema_triggered_until_closed <- dat_affsci %>% 
-  mutate(mins_elapsed = (ep_end_unix - ep_start_unix)/60) %>% 
+  mutate(mins_elapsed = (ep_end_unix - ep_delivered_unix)/60) %>% 
   filter(ep_status != "undelivered") %>% 
   summarise(what = "From when EMA was delivered and when EMA was completed or closed",
             mean_mins = mean(mins_elapsed, na.rm=TRUE),
             q0 = quantile(mins_elapsed, probs = 0, na.rm=TRUE),
+            q1 = quantile(mins_elapsed, probs = .01, na.rm = TRUE),
             q10 = quantile(mins_elapsed, probs = .10, na.rm=TRUE),
             q20 = quantile(mins_elapsed, probs = .20, na.rm=TRUE),
             q30 = quantile(mins_elapsed, probs = .30, na.rm=TRUE),
@@ -192,22 +318,14 @@ ema_triggered_until_closed <- dat_affsci %>%
             q70 = quantile(mins_elapsed, probs = .70, na.rm=TRUE),
             q80 = quantile(mins_elapsed, probs = .80, na.rm=TRUE),
             q90 = quantile(mins_elapsed, probs = .90, na.rm=TRUE),
+            q99 = quantile(mins_elapsed, probs = .99, na.rm = TRUE),
             q100 = quantile(mins_elapsed, probs = 1, na.rm=TRUE))
 
 list_collect_process_checks <- append(list_collect_process_checks, list(ema_triggered_until_closed))
 
 # Create a dataframe with the results of the process checks -------------------
+
 dat_collect_process_checks <- bind_rows(list_collect_process_checks)
-
-###############################################################################
-# Merge demographics to dataset
-###############################################################################
-
-
-# --- ADD CODE HERE ---
-
-
-
 
 ###############################################################################
 # Create variables to be used in analysis
@@ -221,12 +339,9 @@ dat_affsci <- dat_affsci %>% mutate(cluster_id = ec_study_day_int - 1)
 
 # Create continuous hour of day variable and continuous day in MRT variable
 # based on timestamp of when micro-randomization occurred --------------------
-
-
-# --- ADD CODE HERE ---
-
-
-
+dat_affsci <- dat_affsci %>%
+  mutate(hour_coinflip_local = hour(ep_rand_hrts_local) + minute(ep_rand_hrts_local)/60 + second(ep_rand_hrts_local)/(60*60)) %>%
+  mutate(days_between_v1_and_coinflip_local = int_length(v_first_day_hrts_local %--% ep_rand_hrts_local)/(24*60*60))
 
 # Eligibility (availability) for micro-randomization --------------------------
 dat_affsci <- dat_affsci %>%
@@ -264,23 +379,57 @@ dat_affsci[["Y"]] <- construct_primary_proximal_outcome(cleaned_data_frame = dat
                                                         q2_var_name = "ei_mars_other_use", 
                                                         q3_var_name = "ei_non_mars_use")
 
-# Create an indicator for whether there was any eligible decision point 
-# since the start of the study ------------------------------------------------
-
-
-# --- ADD CODE HERE ---
-
-
-
-
 # Create a variable for the value of the primary proximal outcome at the
-# most recent eligible decision point -----------------------------------------
+# most recent eligible decision point and create an indicator for whether there 
+# was any eligible decision point since the start of the study -----------------
+dat_affsci[["decision_points_most_recent_eligible"]] <- NA
+list_all_dat <- list()
 
+all_ids <- unique(dat_affsci[["mars_id"]])
+n_ids <- length(all_ids)
 
-# --- ADD CODE HERE ---
+for(i in 1:n_ids){
+  current_participant <- all_ids[i]
+  dat_current_participant <- dat_affsci %>% filter(mars_id == current_participant)
+  n_blocks <- nrow(dat_current_participant)
+  arr_all_elig_indices <- which(dat_current_participant[["eligibility"]] == 1)
+  
+  dat_current_participant[["any_recent_eligible_dp"]] <- NA
+  dat_current_participant[["decision_points_most_recent_eligible"]] <- NA
+  dat_current_participant[["engagement_most_recent_eligible"]] <- NA
+  
+  for(current_row_number in 1:n_blocks){
+    is_rand <- if_else(!is.na(dat_current_participant[current_row_number,"ep_rand_hrts_local"]), TRUE, FALSE)
+    
+    if(is_rand == TRUE){
+      arr_found <- arr_all_elig_indices < current_row_number
+      any_found <- if_else(sum(arr_found) == 0, 0, 1)
+      if(any_found == 1){
+        these_indices_found <- arr_all_elig_indices[arr_found]
+        the_matched_index <- max(these_indices_found)
+      }else{
+        the_matched_index <- NA_real_
+      }
+      dat_current_participant[["decision_points_most_recent_eligible"]][current_row_number] <- the_matched_index
+      
+      if(!is.na(the_matched_index)){
+        dat_current_participant[["any_recent_eligible_dp"]][current_row_number] <- 1
+        dat_current_participant[["engagement_most_recent_eligible"]][current_row_number] <- dat_current_participant[["Y"]][the_matched_index]
+      }else{
+        dat_current_participant[["any_recent_eligible_dp"]][current_row_number] <- 0
+      }
+    }
+  }
+  
+  list_all_dat <- append(list_all_dat, list(dat_current_participant))
+}
 
+dat_affsci <- bind_rows(list_all_dat)
 
+# Whether 2qs had any response ------------------------------------------------
 
+dat_affsci <- dat_affsci %>%
+  mutate(any_response_2qs = if_else((!is.na(ei_2qs_cig_avail)) | (!is.na(ei_2qs_negaff)), 1, 0))
 
 # Substance use variables ----------------------------------------------------- 
 
@@ -293,7 +442,108 @@ dat_affsci <- dat_affsci %>%
 
 dat_affsci <- dat_affsci %>%
   select(mars_id, participant_id, cluster_id, decision_point,
-         eligibility, coinflip, is_high_effort, is_low_effort, Y,
+         any_response_2qs,
+         eligibility, hour_coinflip_local, days_between_v1_and_coinflip_local,
+         coinflip, is_high_effort, is_low_effort, Y,
+         any_recent_eligible_dp, decision_points_most_recent_eligible, engagement_most_recent_eligible,
          substance_is_cigarettes, substance_is_any_nicotine, substance_is_any_tobacco,
+         age,
+         is_male, 
+         is_latino, 
+         is_not_latino_and_black, 
+         is_not_latino_and_white, 
+         is_not_latino_and_other, 
+         baseline_tobacco_history, 
+         has_partner, 
+         income_val,
          everything())
+
+dat_primary_aim <- dat_affsci %>%
+  select(mars_id, participant_id, cluster_id, decision_point,
+         any_response_2qs,
+         eligibility, hour_coinflip_local, days_between_v1_and_coinflip_local,
+         coinflip, is_high_effort, is_low_effort, Y,
+         any_recent_eligible_dp, decision_points_most_recent_eligible, engagement_most_recent_eligible,
+         substance_is_cigarettes, substance_is_any_nicotine, substance_is_any_tobacco,
+         age,
+         is_male, 
+         is_latino, 
+         is_not_latino_and_black, 
+         is_not_latino_and_white, 
+         is_not_latino_and_other,
+         baseline_tobacco_history, 
+         has_partner, 
+         income_val)
+
+###############################################################################
+# Save process checks
+###############################################################################
+
+is_dir_exist <- file.exists(file.path("process-checks"))
+
+if(isFALSE(is_dir_exist)){
+  dir.create(file.path("process-checks"))
+}
+
+write.csv(dat_summary_empirical_prob, file.path("process-checks", "dat_summary_empirical_prob.csv"), row.names = FALSE)
+write.csv(dat_collect_process_checks, file.path("process-checks", "dat_collect_process_checks.csv"), row.names = FALSE)
+
+################################################################################
+# Calculate summary statistics
+################################################################################
+dat_summary_missing_demogs <- dat_demogs_for_affsci %>%
+  summarise(n_participants = n(),
+            n_participants_with_missing_demogs = sum(is_missing_any_demog_data),
+            n_missing_age = sum(is_missing_age),
+            n_missing_gender = sum(is_missing_gender),
+            n_missing_race_and_ethnicity = sum(is_missing_race_and_ethnicity),
+            n_missing_baseline_tobacco_history = sum(is_missing_baseline_tobacco_history),
+            n_missing_partner_status = sum(is_missing_partner_status),
+            n_missing_income = sum(is_missing_income))
+
+dat_summary_demogs_continuous <- dat_demogs_for_affsci %>%
+  summarise(m_age = mean(age),
+            sd_age = sd(age),
+            m_baseline_tobacco_history = mean(baseline_tobacco_history, na.rm = TRUE),
+            sd_baseline_tobacco_history = sd(baseline_tobacco_history, na.rm = TRUE),
+            m_income = mean(income_val, na.rm = TRUE),
+            sd_income = sd(income_val, na.rm = TRUE))
+
+dat_summary_demogs_binary <- dat_demogs_for_affsci %>%
+  summarise(n_male = sum(is_male),
+            pct_male = mean(is_male) * 100,
+            n_latino = sum(is_latino),
+            pct_latino = mean(is_latino) * 100,
+            n_not_latino = sum(is_latino == 0),
+            pct_not_latino = mean(is_latino == 0),
+            n_not_latino_and_black = sum(is_not_latino_and_black),
+            pct_not_latino_and_black = mean(is_not_latino_and_black) * 100,
+            n_not_latino_and_other = sum(is_not_latino_and_other),
+            pct_not_latino_and_other = mean(is_not_latino_and_other) * 100,
+            n_not_latino_and_white = sum(is_not_latino_and_white),
+            pct_not_latino_and_white = mean(is_not_latino_and_white) * 100,
+            n_has_partner = sum(has_partner, na.rm = TRUE),
+            pct_has_partner = mean(has_partner, na.rm = TRUE) * 100)
+
+dat_summary_income_tabulation <- dat_demogs_for_affsci %>% group_by(income_val) %>% summarise(num_participants = n())
+
+################################################################################
+# Save output in csv format
+################################################################################
+is_dir_exist <- file.exists(file.path("analysis-complete-case", "formatted-output"))
+
+if(isFALSE(is_dir_exist)){
+  dir.create(file.path("analysis-complete-case", "formatted-output"))
+}
+
+is_dir_exist <- file.exists(file.path("analysis-complete-case", "formatted-output", "summary-statistics"))
+
+if(isFALSE(is_dir_exist)){
+  dir.create(file.path("analysis-complete-case", "formatted-output", "summary-statistics"))
+}
+
+write.csv(dat_summary_missing_demogs, file.path("analysis-complete-case", "formatted-output", "summary-statistics", "dat_summary_missing_demogs.csv"), row.names = FALSE)
+write.csv(dat_summary_demogs_continuous, file.path("analysis-complete-case", "formatted-output", "summary-statistics", "dat_summary_demogs_continuous.csv"), row.names = FALSE)
+write.csv(dat_summary_demogs_binary, file.path("analysis-complete-case", "formatted-output", "summary-statistics", "dat_summary_demogs_binary.csv"), row.names = FALSE)
+write.csv(dat_summary_income_tabulation, file.path("analysis-complete-case", "formatted-output", "summary-statistics", "dat_summary_income_tabulation.csv"), row.names = FALSE)
 

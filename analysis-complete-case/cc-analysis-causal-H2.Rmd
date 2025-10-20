@@ -1,0 +1,626 @@
+---
+title: "Affective Science MRT: Prompt Effects H2"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: 
+  html_document:
+    toc: TRUE
+    toc_depth: 4
+    number_sections: TRUE
+---
+
+<style type="text/css">
+.main-container {
+  max-width: 1800px !important;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(tidy = TRUE)
+knitr::opts_chunk$set(fig.pos = 'H')
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE)
+options(width = 7000)
+```
+
+```{r}
+source("paths.R")
+library(knitr)
+library(tidyverse)
+library(geepack)
+source(file = file.path("custom-analysis-code-emee-estimator", "emee_categorical_trt_with_Delta.R"))
+source(file = file.path("custom-analysis-code-emee-estimator", "helper-functions.R"))
+source(file = file.path("custom-analysis-code-emee-estimator", "emee-categorical-verbose-output.R"))
+source("setup-data.R")
+```
+
+```{r}
+is_dir_exist <- file.exists(file.path("analysis-complete-case", "formatted-output"))
+
+if(isFALSE(is_dir_exist)){
+  dir.create(file.path("analysis-complete-case", "formatted-output"))
+}
+
+is_dir_exist <- file.exists(file.path("analysis-complete-case", "formatted-output", "H2"))
+
+if(isFALSE(is_dir_exist)){
+  dir.create(file.path("analysis-complete-case", "formatted-output", "H2"))
+}
+```
+
+```{r}
+dat_primary_aim <- dat_primary_aim %>%
+  mutate(is_include_main = if_else((decision_point >= 7) & (decision_point <= 54), 1, 0),    # Drop the first 6 and last 6 decision points
+         is_include_sensitivity = 1)                                                         # Keep all decision points
+```
+
+```{r}
+dat_for_analysis <- dat_primary_aim %>%
+  filter(is_include_main == 1) %>%
+  select(participant_id, decision_point, eligibility, 
+         coinflip, is_high_effort, is_low_effort,
+         Y,
+         hour_coinflip_local, days_between_v1_and_coinflip_local,
+         any_response_2qs, any_recent_eligible_dp, engagement_most_recent_eligible,
+         age, is_male, is_latino, is_not_latino_and_black, is_not_latino_and_other, baseline_tobacco_history, has_partner, income_val)
+```
+
+## Estimated prevalence by group
+
+```{r}
+dat_prevalence <- dat_for_analysis %>%
+  filter(eligibility == 1) %>%
+  group_by(is_high_effort, is_low_effort) %>%
+  summarise(mu_Y = mean(Y, na.rm = TRUE)) %>%
+  arrange(desc(is_high_effort), desc(is_low_effort))
+
+dat_prevalence
+```
+
+```{r}
+# Format output to 3 decimal places
+dat_prevalence %>% round(., 3) %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "H2", "prevalence_by_group_H2.csv"), row.names = TRUE)
+```
+
+```{r, fig.width = 6, fig.height = 8}
+dat_prevalence %>%
+  arrange(mu_Y) %>%
+  mutate(coinflip_factor = case_when(
+    (is_high_effort == 0) & (is_low_effort == 0) ~ "No Prompt",
+    (is_high_effort == 1) & (is_low_effort == 0) ~ "More Effortful Prompt",
+    (is_high_effort == 0) & (is_low_effort == 1) ~ "Low Effort Prompt",
+    .default = NA_character_
+  )) %>%
+  mutate(coinflip_factor = as_factor(coinflip_factor)) %>%
+  ggplot(aes(x = coinflip_factor, y = mu_Y)) + geom_bar(stat="identity", color="black", fill="#56B4E9", linewidth = 2) + scale_x_discrete(name="Treatment Assignment") + scale_y_continuous(name="Proportion engaged with self-regulatory strategies ~1 hour after micro-randomization", limits=c(0,1), breaks = seq(0,1,0.10)) + theme(legend.position = "none") + geom_text(aes(label=round(mu_Y, 2)), vjust=-0.3, size=6)
+
+ggsave(filename = file.path("analysis-complete-case", "formatted-output", "H2", "prevalence.png"), dpi = 1200)
+```
+
+```{r, fig.width = 4, fig.height = 8}
+dat_prevalence %>% 
+  arrange(mu_Y) %>%
+  mutate(coinflip_factor = case_when(
+    (is_high_effort == 0) & (is_low_effort == 0) ~ "No Prompt",
+    (is_high_effort == 1) & (is_low_effort == 0) ~ "More Effortful Prompt",
+    (is_high_effort == 0) & (is_low_effort == 1) ~ "Low Effort Prompt",
+    .default = NA_character_
+  )) %>%
+  mutate(coinflip_factor = as_factor(coinflip_factor)) %>%
+  filter(coinflip_factor != "No Prompt") %>%
+  ggplot(aes(x = coinflip_factor, y = mu_Y)) + geom_bar(stat="identity", color="black", fill="#56B4E9", linewidth = 2) + scale_x_discrete(name="Treatment Assignment") + scale_y_continuous(name="Proportion engaged with self-regulatory strategies ~1 hour after micro-randomization", limits=c(0,1), breaks = seq(0,1,0.10)) + theme(legend.position = "none") + geom_text(aes(label=round(mu_Y, 2)), vjust=-0.3, size=6)
+
+ggsave(filename = file.path("analysis-complete-case", "formatted-output", "H2", "prevalence_HL.png"), dpi = 1200)
+```
+
+
+```{r}
+my_list <- list(Y = -1,
+                coinflip = -1,
+                hour_coinflip_local = -1, 
+                days_between_v1_and_coinflip_local = -1,
+                any_response_2qs = -1, 
+                any_recent_eligible_dp = -1, 
+                engagement_most_recent_eligible = -1,
+                age = -1, 
+                is_male = -1, 
+                is_latino = -1, 
+                is_not_latino_and_black = -1, 
+                is_not_latino_and_other = -1, 
+                baseline_tobacco_history = -1, 
+                has_partner = -1, 
+                income_val = -1)
+```
+
+```{r}
+dat_for_analysis_elig <- dat_for_analysis %>% filter(eligibility == 1)
+dat_for_analysis_not_elig <- dat_for_analysis %>% filter(eligibility == 0)
+```
+
+```{r}
+logical_vec_cc <- dat_for_analysis_elig %>% 
+  select(Y,
+         hour_coinflip_local, days_between_v1_and_coinflip_local,
+         any_response_2qs, any_recent_eligible_dp, engagement_most_recent_eligible,
+         age, is_male, is_latino, is_not_latino_and_black, is_not_latino_and_other, 
+         baseline_tobacco_history, has_partner, income_val) %>%
+  complete.cases(.)
+```
+
+```{r}
+# Note that this line is needed because we are doing a complete case analysis
+# We would not need this line if we were doing a multiply imputed analysis
+dat_for_analysis_elig <- dat_for_analysis_elig %>% mutate(eligibility = if_else(logical_vec_cc, eligibility, 0))
+```
+
+```{r}
+dat_for_analysis <- rbind(dat_for_analysis_elig, dat_for_analysis_not_elig)
+dat_for_analysis <- dat_for_analysis %>% arrange(participant_id, decision_point)
+dat_for_analysis <- dat_for_analysis %>% replace_na(my_list)
+```
+
+```{r}
+participants_fully_dropped <- dat_for_analysis %>% 
+  group_by(participant_id) %>% 
+  summarise(count_elig = sum(eligibility)) %>%
+  arrange(count_elig) %>%
+  filter(count_elig == 0) %>%
+  .[["participant_id"]]
+```
+
+## Estimated effect on the log risk ratio scale
+
+```{r}
+dat_for_analysis <- dat_primary_aim %>%
+  filter(is_include_main == 1) %>%
+  select(participant_id, decision_point, eligibility, 
+         coinflip, is_high_effort, is_low_effort,
+         Y,
+         hour_coinflip_local, days_between_v1_and_coinflip_local,
+         any_response_2qs, any_recent_eligible_dp, engagement_most_recent_eligible,
+         age, is_male, is_latino, is_not_latino_and_black, is_not_latino_and_other, baseline_tobacco_history, has_partner, income_val)
+```
+
+```{r}
+# We will set up the dataset so that in analysis, we may have the following comparisons:
+#   * high effort prompt versus no prompt
+#   * low effort prompt versus no prompt
+dat_for_analysis <- dat_for_analysis %>%
+  mutate(treatment_cate = case_when(
+    is_low_effort == 1 ~ 2,  # This allows us to make the comparison: low effort prompt versus no prompt
+    is_high_effort == 1 ~ 1, # This allows us to make the comparison: high effort prompt versus no prompt
+    coinflip == 0 ~ 0,       # Important note: the value of zero in treatment_cate is used to indicate the reference category to be used. 
+    .default = NULL)) %>%
+  mutate(rand_prob = case_when(
+    treatment_cate == 0 ~ 0.50,
+    treatment_cate == 1 ~ 0.25,
+    treatment_cate == 2 ~ 0.25,
+    .default = NULL))
+
+# rand_prob_A0 is the randomization probability corresponding to the reference category (whatever was coded to take on a value of 0 in treatment_cate)
+dat_for_analysis[["rand_prob_A0"]] <- dat_for_analysis %>% filter(treatment_cate == 0) %>% .[["rand_prob"]] %>% unique(.)
+```
+
+```{r}
+# Note that this data preparation step differs from what we would typically do when we used the MRTAnalysis package
+# When we used the MRTAnalysis package, we would not drop rows in which a participant was ineligible for micro-randomization
+# However, when we use the custom data analysis functions called in this document, we actually drop those rows corresponding to blocks in which a participant was ineligible for micro-randomization
+dat_for_analysis_elig <- dat_for_analysis %>% filter(eligibility == 1)
+```
+
+```{r}
+# Note that this code snippet is specific to complete case analysis
+# i.e., we would not do this if we were doing multiply imputed analysis
+logical_vec_cc <- dat_for_analysis_elig %>% 
+  select(Y,
+         hour_coinflip_local, days_between_v1_and_coinflip_local,
+         any_response_2qs, any_recent_eligible_dp, engagement_most_recent_eligible,
+         age, is_male, is_latino, is_not_latino_and_black, is_not_latino_and_other, baseline_tobacco_history, has_partner, income_val) %>%
+  complete.cases(.)
+
+# The next line says: among rows corresponding to blocks in which a participant 
+# was eligible for micro-randomization, drop the row if they had missing data 
+# in any of the variables we specified in logical_vec_cc
+dat_for_analysis_elig <- dat_for_analysis_elig %>% filter(logical_vec_cc)
+```
+
+```{r}
+if(length(participants_fully_dropped) > 0){
+  dat_for_analysis <- dat_for_analysis %>% filter(!(participant_id %in% participants_fully_dropped))
+}
+```
+
+```{r}
+fit1 <- emee_categorical_trt_with_Delta(
+  dta = dat_for_analysis_elig,
+  id_varname = "participant_id",
+  decision_time_varname = "decision_point",
+  treatment_varname = "treatment_cate",
+  outcome_varname = "Y",
+  control_varname = c("age", "is_male", "is_latino", "is_not_latino_and_black", "is_not_latino_and_other", "baseline_tobacco_history", "has_partner", "income_val", "hour_coinflip_local", "days_between_v1_and_coinflip_local", "any_response_2qs", "engagement_most_recent_eligible"),
+  moderator_varname = NULL,
+  rand_prob_varname = "rand_prob",
+  rand_prob_A0_varname = "rand_prob_A0",
+  avail_varname = NULL,
+  rand_prob_tilde_varname = NULL,
+  # For MRT with constant randomization probability, 
+  # simply set rand_prob_tilde to be equal to the actual randomization probabilities
+  # Here, what ever you coded as 0, 1, 2 in treatment_cate
+  # specify the randomization probabilities in that order
+  rand_prob_tilde = c(0.50, 0.25, 0.25),  
+  estimator_initial_value = NULL,
+  Delta = 1,
+  # Number of treatment categories (Important note: this must exclude the reference category)
+  num_trt = 2  
+)
+```
+
+```{r}
+# The output of emee_categorical_trt_with_Delta does not contain 
+# confidence intervals or p-values by default; in this code snippet, we
+# call the functions convert_to_emee_fit_object and summary to facilitate this calculation
+fit1_converted <- convert_to_emee_fit_object(fit1, dat_for_analysis, "participant_id")
+fit1_results <- summary(fit1_converted, show_control_fit = TRUE)
+fit1_causal <- fit1_results$causal_excursion_effect
+fit1_control <- fit1_results$control_variables
+```
+
+```{r}
+dat_causal <- data.frame(coefficient = c("beta0", "beta1"),
+                         estimate = round(fit1_causal[,"Estimate"], 3),
+                         LCL95 = round(fit1_causal[,"95% LCL"], 3),
+                         UCL95 = round(fit1_causal[,"95% UCL"], 3),
+                         SE = round(fit1_causal[,"StdErr"], 3),
+                         test_stat = round(fit1_causal[,"t_value"], 3),
+                         df = round(fit1_causal[, "df"], 3),
+                         p = round(fit1_causal[,"p-value"], 3))
+```
+
+```{r}
+orig_row_names <- row.names(dat_causal)
+new_row_names <- orig_row_names
+new_row_names <- replace(new_row_names, orig_row_names == "1", "High Effort Prompt (versus No Prompt)")
+new_row_names <- replace(new_row_names, orig_row_names == "2", "Low Effort Prompt (versus No Prompt)")
+row.names(dat_causal) <- new_row_names
+```
+
+```{r}
+dat_control <- data.frame(coefficient = paste("alpha", 0:(length(fit1_control[,"Estimate"])-1), sep=""),
+                          estimate = round(fit1_control[,"Estimate"], 3),
+                          LCL95 = round(fit1_control[,"95% LCL"], 3),
+                          UCL95 = round(fit1_control[,"95% UCL"], 3),
+                          SE = round(fit1_control[,"StdErr"], 3),
+                          test_stat = round(fit1_control[,"t_value"], 3),
+                          df = round(fit1_control[,"df"], 3),
+                          p = round(fit1_control[,"p-value"], 3))
+```
+
+```{r}
+dat_result <- rbind(dat_causal, dat_control)
+
+dat_result
+
+# Format output to 3 decimal places
+dat_result %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "H2", "log_risk_ratio_scale_H2.csv"), row.names = TRUE)
+```
+
+```{r}
+n_terms_control <- fit1_converted$fit$dims$q
+n_terms_total <- fit1_converted$fit$dims$q + fit1_converted$fit$dims$p
+
+Lmat <- matrix(c(1,0,
+                 0,1,
+                 1,-1), nrow = 3, byrow = TRUE)
+causal_est <- as.matrix(fit1_converted$fit$beta_hat)
+causal_vcov_adjusted <- fit1_converted$fit$varcov_adjusted[(n_terms_control + 1):n_terms_total,(n_terms_control + 1):n_terms_total]
+
+est_contrast <- Lmat %*% causal_est
+vcov_contrast <- Lmat %*% causal_vcov_adjusted %*% t(Lmat)
+se_contrast <- sqrt(diag(vcov_contrast))
+
+conf_level <- 0.95
+degrees_of_freedom <- fit1_converted$df
+critical_value <- qt(1 - (1 - conf_level) / 2, df = degrees_of_freedom)
+lcl_contrast <- est_contrast - se_contrast * critical_value
+ucl_contrast <- est_contrast + se_contrast * critical_value
+test_stat_contrast <- est_contrast/se_contrast
+p_value_contrast <- 2 * pt(abs(test_stat_contrast), df = degrees_of_freedom, lower.tail = FALSE)  # two-sided
+
+results_contrast <- data.frame(est_contrast = est_contrast, lcl_contrast = lcl_contrast, ucl_contrast = ucl_contrast, se_contrast = se_contrast, test_stat_contrast = test_stat_contrast, degrees_of_freedom = degrees_of_freedom, p_value = p_value_contrast)
+row.names(results_contrast) <- c("High vs. None", "Low vs. None", "High vs. Low")
+
+results_contrast
+
+# Format output to 3 decimal places
+results_contrast %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "H2", "log_risk_ratio_scale_contrast_H2.csv"), row.names = TRUE)
+```
+
+## Estimated effect on the risk ratio scale
+
+```{r}
+exp_estimates <- exp(results_contrast$est_contrast)
+rrLB95 <- exp(results_contrast$lcl_contrast)
+rrUB95 <- exp(results_contrast$ucl_contrast)
+
+dat_exp_scale <- data.frame(exp_estimates = exp_estimates, rrLB95 = rrLB95, rrUB95 = rrUB95)
+
+row.names(dat_exp_scale) <- c("High vs. None", "Low vs. None", "High vs. Low")
+
+dat_exp_scale
+
+# Format output to 3 decimal places
+dat_exp_scale %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "H2", "risk_ratio_scale_contrast_H2.csv"), row.names = TRUE)
+```
+
+## Estimated effect on the risk difference scale
+
+```{r}
+fit <- geeglm(Y ~ is_high_effort + is_low_effort + age + is_male + is_latino + is_not_latino_and_black + is_not_latino_and_other + baseline_tobacco_history + has_partner + income_val + hour_coinflip_local + days_between_v1_and_coinflip_local + any_response_2qs + engagement_most_recent_eligible, family = "gaussian", data = dat_for_analysis_elig, id = participant_id, waves = decision_point)
+
+dat_result <- data.frame(variable = rownames(summary(fit)$coefficients),
+                         estimates = summary(fit)$coefficients[,"Estimate"],
+                         LCL95 = summary(fit)$coefficients[,"Estimate"] - qnorm(0.975)*summary(fit)$coefficients[,"Std.err"],
+                         UCL95 = summary(fit)$coefficients[,"Estimate"] + qnorm(0.975)*summary(fit)$coefficients[,"Std.err"],
+                         std_err = summary(fit)$coefficients[,"Std.err"])
+
+dat_result
+
+dat_result %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "H2", "risk_difference_scale_H2.csv"), row.names = TRUE)
+```
+
+```{r}
+Lmat <- matrix(c(0,1,0, rep(0,12),
+                 0,0,1, rep(0,12),
+                 0,1,-1, rep(0,12)), 
+               ncol = 15, byrow = TRUE)
+
+est_contrast <- Lmat %*% as.matrix(fit$coefficients)
+est_vcov_contrast <- Lmat %*% vcov(fit) %*% t(Lmat)
+est_stderr_contrast <- sqrt(diag(est_vcov_contrast))
+LB95 <- c(est_contrast) - qnorm(0.975) * est_stderr_contrast
+UB95 <- c(est_contrast) + qnorm(0.975) * est_stderr_contrast
+
+dat_result <- data.frame(contrast = c("high vs none", "low vs none", "high vs low"), est_contrast = est_contrast, LB95 = LB95, UB95 = UB95, est_stderr_contrast = est_stderr_contrast)
+
+dat_result
+
+dat_result %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "H2", "risk_difference_scale_contrast_H2.csv"), row.names = TRUE)
+```
+
+
+# H2 Sensitivity Analysis
+
+```{r}
+dat_for_analysis <- dat_primary_aim %>%
+  filter(is_include_sensitivity == 1) %>%
+  select(participant_id, decision_point, eligibility, 
+         coinflip, is_high_effort, is_low_effort,
+         Y,
+         hour_coinflip_local, days_between_v1_and_coinflip_local,
+         any_response_2qs, any_recent_eligible_dp, engagement_most_recent_eligible,
+         age, is_male, is_latino, is_not_latino_and_black, is_not_latino_and_other, baseline_tobacco_history, has_partner, income_val)
+```
+
+## Estimated prevalence by group
+
+```{r}
+dat_prevalence <- dat_for_analysis %>%
+  filter(eligibility == 1) %>%
+  group_by(is_high_effort, is_low_effort) %>%
+  summarise(mu_Y = mean(Y, na.rm = TRUE)) %>%
+  arrange(desc(is_high_effort), desc(is_low_effort))
+
+dat_prevalence
+```
+
+```{r}
+# Format output to 3 decimal places
+dat_prevalence %>% round(., 3) %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "H2", "sensitivity_prevalence_by_group_H2.csv"), row.names = TRUE)
+```
+
+```{r}
+# We will set up the dataset so that in analysis, we may have the following comparisons:
+#   * high effort prompt versus low effort prompt
+#   * low effort prompt versus no prompt
+dat_for_analysis <- dat_for_analysis %>%
+  mutate(treatment_cate = case_when(
+    is_low_effort == 1 ~ 2,  # This allows us to make the comparison: low effort prompt versus no prompt
+    is_high_effort == 1 ~ 1, # This allows us to make the comparison: high effort prompt versus no prompt
+    coinflip == 0 ~ 0,       # Important note: the value of zero in treatment_cate is used to indicate the reference category to be used. 
+    .default = NULL)) %>%
+  mutate(rand_prob = case_when(
+    treatment_cate == 0 ~ 0.50,
+    treatment_cate == 1 ~ 0.25,
+    treatment_cate == 2 ~ 0.25,
+    .default = NULL))
+
+# rand_prob_A0 is the randomization probability corresponding to the reference category (whatever was coded to take on a value of 0 in treatment_cate)
+dat_for_analysis[["rand_prob_A0"]] <- dat_for_analysis %>% filter(treatment_cate == 0) %>% .[["rand_prob"]] %>% unique(.)
+```
+
+```{r}
+# Note that this data preparation step differs from what we would typically do when we used the MRTAnalysis package
+# When we used the MRTAnalysis package, we would not drop rows in which a participant was ineligible for micro-randomization
+# However, when we use the custom data analysis functions called in this document, we actually drop those rows corresponding to blocks in which a participant was ineligible for micro-randomization
+dat_for_analysis_elig <- dat_for_analysis %>% filter(eligibility == 1)
+```
+
+```{r}
+# Note that this code snippet is specific to complete case analysis
+# i.e., we would not do this if we were doing multiply imputed analysis
+logical_vec_cc <- dat_for_analysis_elig %>% 
+  select(Y,
+         hour_coinflip_local, days_between_v1_and_coinflip_local,
+         any_response_2qs, any_recent_eligible_dp, engagement_most_recent_eligible,
+         age, is_male, is_latino, is_not_latino_and_black, is_not_latino_and_other, baseline_tobacco_history, has_partner, income_val) %>%
+  complete.cases(.)
+
+# The next line says: among rows corresponding to blocks in which a participant 
+# was eligible for micro-randomization, drop the row if they had missing data 
+# in any of the variables we specified in logical_vec_cc
+dat_for_analysis_elig <- dat_for_analysis_elig %>% filter(logical_vec_cc)
+```
+
+## Estimated effect on the log risk ratio scale
+
+```{r}
+fit1 <- emee_categorical_trt_with_Delta(
+  dta = dat_for_analysis_elig,
+  id_varname = "participant_id",
+  decision_time_varname = "decision_point",
+  treatment_varname = "treatment_cate",
+  outcome_varname = "Y",
+  control_varname = c("age", "is_male", "is_latino", "is_not_latino_and_black", "is_not_latino_and_other", "baseline_tobacco_history", "has_partner", "income_val", "hour_coinflip_local", "days_between_v1_and_coinflip_local", "any_response_2qs", "engagement_most_recent_eligible"),
+  moderator_varname = NULL,
+  rand_prob_varname = "rand_prob",
+  rand_prob_A0_varname = "rand_prob_A0",
+  avail_varname = NULL,
+  rand_prob_tilde_varname = NULL,
+  # For MRT with constant randomization probability, 
+  # simply set rand_prob_tilde to be equal to the actual randomization probabilities
+  # Here, what ever you coded as 0, 1, 2 in treatment_cate
+  # specify the randomization probabilities in that order
+  rand_prob_tilde = c(0.50, 0.25, 0.25),  
+  estimator_initial_value = NULL,
+  Delta = 1,
+  # Number of treatment categories (important: this must exclude the reference category)
+  num_trt = 2  
+)
+```
+
+```{r}
+# The output of emee_categorical_trt_with_Delta does not contain 
+# confidence intervals or p-values by default; in this code snippet, we
+# call the functions convert_to_emee_fit_object and summary to facilitate this calculation
+fit1_converted <- convert_to_emee_fit_object(fit1, dat_for_analysis, "participant_id")
+fit1_results <- summary(fit1_converted, show_control_fit = TRUE)
+fit1_causal <- fit1_results$causal_excursion_effect
+fit1_control <- fit1_results$control_variables
+```
+
+```{r}
+dat_causal <- data.frame(coefficient = c("beta0", "beta1"),
+                          estimate = round(fit1_causal[,"Estimate"], 3),
+                          LCL95 = round(fit1_causal[,"95% LCL"], 3),
+                          UCL95 = round(fit1_causal[,"95% UCL"], 3),
+                          SE = round(fit1_causal[,"StdErr"], 3),
+                          test_stat = round(fit1_causal[,"t_value"], 3),
+                          df = round(fit1_causal[, "df"], 3),
+                          p = round(fit1_causal[,"p-value"], 3))
+```
+
+```{r}
+orig_row_names <- row.names(dat_causal)
+new_row_names <- orig_row_names
+new_row_names <- replace(new_row_names, orig_row_names == "1", "High Effort Prompt (versus Low Effort)")
+new_row_names <- replace(new_row_names, orig_row_names == "2", "No Prompt (versus Low Effort)")
+row.names(dat_causal) <- new_row_names
+```
+
+```{r}
+dat_control <- data.frame(coefficient = paste("alpha", 0:(length(fit1_control[,"Estimate"])-1), sep=""),
+                          estimate = round(fit1_control[,"Estimate"], 3),
+                          LCL95 = round(fit1_control[,"95% LCL"], 3),
+                          UCL95 = round(fit1_control[,"95% UCL"], 3),
+                          SE = round(fit1_control[,"StdErr"], 3),
+                          test_stat = round(fit1_control[,"t_value"], 3),
+                          df = round(fit1_control[,"df"], 3),
+                          p = round(fit1_control[,"p-value"], 3))
+```
+
+```{r}
+dat_result <- rbind(dat_causal, dat_control)
+
+dat_result
+
+# Format output to 3 decimal places
+dat_result %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "H2", "sensitivity_log_risk_ratio_scale_H2.csv"), row.names = TRUE)
+```
+
+```{r}
+n_terms_control <- fit1_converted$fit$dims$q
+n_terms_total <- fit1_converted$fit$dims$q + fit1_converted$fit$dims$p
+
+Lmat <- matrix(c(1,0,
+                 0,1,
+                 1,-1), nrow = 3, byrow = TRUE)
+causal_est <- as.matrix(fit1_converted$fit$beta_hat)
+causal_vcov_adjusted <- fit1_converted$fit$varcov_adjusted[(n_terms_control + 1):n_terms_total,(n_terms_control + 1):n_terms_total]
+
+est_contrast <- Lmat %*% causal_est
+vcov_contrast <- Lmat %*% causal_vcov_adjusted %*% t(Lmat)
+se_contrast <- sqrt(diag(vcov_contrast))
+
+conf_level <- 0.95
+degrees_of_freedom <- fit1_converted$df
+critical_value <- qt(1 - (1 - conf_level) / 2, df = degrees_of_freedom)
+lcl_contrast <- est_contrast - se_contrast * critical_value
+ucl_contrast <- est_contrast + se_contrast * critical_value
+test_stat_contrast <- est_contrast/se_contrast
+p_value_contrast <- 2 * pt(abs(test_stat_contrast), df = degrees_of_freedom, lower.tail = FALSE)  # two-sided
+
+results_contrast <- data.frame(est_contrast = est_contrast, lcl_contrast = lcl_contrast, ucl_contrast = ucl_contrast, se_contrast = se_contrast, test_stat_contrast = test_stat_contrast, degrees_of_freedom = degrees_of_freedom, p_value = p_value_contrast)
+row.names(results_contrast) <- c("High vs. None", "Low vs. None", "High vs. Low")
+
+results_contrast
+
+# Format output to 3 decimal places
+results_contrast %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "H2", "sensitivity_log_risk_ratio_scale_contrast_H2.csv"), row.names = TRUE)
+```
+
+## Estimated effect on the risk ratio scale
+
+```{r}
+exp_estimates <- exp(results_contrast$est_contrast)
+rrLB95 <- exp(results_contrast$lcl_contrast)
+rrUB95 <- exp(results_contrast$ucl_contrast)
+
+dat_exp_scale <- data.frame(exp_estimates = exp_estimates, rrLB95 = rrLB95, rrUB95 = rrUB95)
+
+row.names(dat_exp_scale) <- c("High vs. None", "Low vs. None", "High vs. Low")
+
+# Format output to 3 decimal places
+dat_exp_scale %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "H2", "sensitivity_risk_ratio_scale_contrast_H2.csv"), row.names = TRUE)
+```
+
+## Estimated effect on the risk difference scale
+
+```{r}
+fit <- geeglm(Y ~ is_high_effort + is_low_effort + age + is_male + is_latino + is_not_latino_and_black + is_not_latino_and_other + baseline_tobacco_history + has_partner + income_val + hour_coinflip_local + days_between_v1_and_coinflip_local + any_response_2qs + engagement_most_recent_eligible, family = "gaussian", data = dat_for_analysis_elig, id = participant_id, waves = decision_point)
+
+dat_result <- data.frame(variable = rownames(summary(fit)$coefficients),
+                         estimates = summary(fit)$coefficients[,"Estimate"],
+                         LCL95 = summary(fit)$coefficients[,"Estimate"] - qnorm(0.975)*summary(fit)$coefficients[,"Std.err"],
+                         UCL95 = summary(fit)$coefficients[,"Estimate"] + qnorm(0.975)*summary(fit)$coefficients[,"Std.err"],
+                         std_err = summary(fit)$coefficients[,"Std.err"])
+
+dat_result
+
+dat_result %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "H2", "sensitivity_risk_difference_scale_H2.csv"), row.names = TRUE)
+```
+
+```{r}
+Lmat <- matrix(c(0,1,0, rep(0,12),
+                 0,0,1, rep(0,12),
+                 0,1,-1, rep(0,12)), 
+               ncol = 15, byrow = TRUE)
+
+est_contrast <- Lmat %*% as.matrix(fit$coefficients)
+est_vcov_contrast <- Lmat %*% vcov(fit) %*% t(Lmat)
+est_stderr_contrast <- sqrt(diag(est_vcov_contrast))
+LB95 <- c(est_contrast) - qnorm(0.975) * est_stderr_contrast
+UB95 <- c(est_contrast) + qnorm(0.975) * est_stderr_contrast
+
+dat_result <- data.frame(contrast = c("high vs none", "low vs none", "high vs low"), est_contrast = est_contrast, LB95 = LB95, UB95 = UB95, est_stderr_contrast = est_stderr_contrast)
+
+dat_result
+
+dat_result %>% format(., nsmall = 3) %>% write.csv(., file.path("analysis-complete-case", "formatted-output", "H2", "sensitivity_risk_difference_scale_contrast_H2.csv"), row.names = TRUE)
+```
+
+```{r}
+if(file.exists("analysis-complete-case/formatted-output/H2/Thumbs.db")){
+  file.remove("analysis-complete-case/formatted-output/H2/Thumbs.db")
+}
+```
+
