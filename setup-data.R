@@ -14,16 +14,9 @@ codebook_affsci_mrt <- read_excel(file.path(path_raw_data, "2025-6-25-Affective 
 dat_affsci <- readRDS(file.path(path_raw_data, "2025-6-25-Affective Science MRT", "EMA-MRT", "v1.0.0", "Data for analysis", "data_final.RDS"))
 dat_affsci_integers <- readRDS(file.path(path_raw_data, "2025-6-25-Affective Science MRT", "EMA-MRT", "v1.0.0", "Data for analysis", "data_final_integers.RDS"))
 
-# Codebook for study visit data
-codebook_mrt <- read_excel(file.path(path_raw_data, "2025-6-25-Affective Science MRT", "Questionnaire", "v1.0.0", "MRT Data for analysis", "codebook_mrt.xlsx"))
-
-# Study visit data
-v3_quest_mrt <- readRDS(file.path(path_raw_data, "2025-6-25-Affective Science MRT", "Questionnaire", "v1.0.0", "MRT Data for analysis", "v3_quest_mrt.rds"))
-v4_quest_6_month_mrt <- readRDS(file.path(path_raw_data, "2025-6-25-Affective Science MRT", "Questionnaire", "v1.0.0", "MRT Data for analysis", "v4_quest_6_month_mrt.rds"))
-
-# Demographics data
-dat_demogs <- readRDS(file = file.path(path_raw_data, "2025-6-19-AffSci MRT Data", "dat_demogs.RDS"))
-codebook_dat_demogs <- read_excel(file.path(path_raw_data, "2025-6-19-AffSci MRT Data", "dat_demogs_codebook.xlsx"))
+# Most updated version of the data
+dat_demogs <- readRDS(file = file.path(path_raw_data, "2025-11-4-AffSci MRT Log Files, V1 Questionnaire & Data Demogs", "AffSci MRT Dat_Demogs", "dat_demogs.rds"))
+codebook_dat_demogs <- read_excel(file.path(path_raw_data, "2025-11-4-AffSci MRT Log Files, V1 Questionnaire & Data Demogs", "AffSci MRT Dat_Demogs", "dat_demogs_codebook.xlsx"))
 
 ###############################################################################
 # Data cleaning step for:
