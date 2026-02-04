@@ -18,6 +18,10 @@ dat_affsci_integers <- readRDS(file.path(path_raw_data, "2025-6-25-Affective Sci
 dat_demogs <- readRDS(file = file.path(path_raw_data, "2025-11-4-AffSci MRT Log Files, V1 Questionnaire & Data Demogs", "AffSci MRT Dat_Demogs", "dat_demogs.rds"))
 codebook_dat_demogs <- read_excel(file.path(path_raw_data, "2025-11-4-AffSci MRT Log Files, V1 Questionnaire & Data Demogs", "AffSci MRT Dat_Demogs", "dat_demogs_codebook.xlsx"))
 
+codebook_mrt <- read_excel(file.path(path_raw_data, "2025-11-4-AffSci MRT Log Files, V1 Questionnaire & Data Demogs", "AffSci MRT Questionnaire v1.0.0", "MRT Data for analysis", "codebook_mrt.xlsx"))
+screening_quest_mrt <- readRDS(file.path(path_raw_data, "2025-11-4-AffSci MRT Log Files, V1 Questionnaire & Data Demogs", "AffSci MRT Questionnaire v1.0.0", "MRT Data for analysis", "screening_quest_mrt.rds"))
+v1_baseline_quest_mrt <- readRDS(file.path(path_raw_data, "2025-11-4-AffSci MRT Log Files, V1 Questionnaire & Data Demogs", "AffSci MRT Questionnaire v1.0.0", "MRT Data for analysis", "v1_baseline_quest_mrt.rds"))
+
 ###############################################################################
 # Data cleaning step for:
 # One participant had one day with more than 6 blocks
@@ -114,6 +118,56 @@ dat_demogs <- dat_demogs %>%
          baseline_tobacco_history = baseline_tobacco_history, 
          has_partner = has_partner, 
          income_val = income_val)
+
+dat_screener <- screening_quest_mrt %>%
+  select(record_id, scr_age, scr_cpd, scr_sex, gender) %>%
+  mutate(record_id = as.numeric(record_id)) %>%
+  mutate(redcap_id = record_id, screener_age = scr_age, screener_cpd = scr_cpd, screener_sex = scr_sex, screener_gender = gender)
+
+dat_v1_baseline <- v1_baseline_quest_mrt %>%
+  select(record_id, dses1_1, dses1a_1) %>%
+  mutate(record_id = as.numeric(record_id)) %>%
+  mutate(redcap_id = record_id, baseline_gender = dses1_1, baseline_sex = dses1a_1)
+
+dat_demogs <- left_join(x = dat_demogs, y = dat_screener, by = join_by("redcap_id" == "redcap_id"))
+dat_demogs <- left_join(x = dat_demogs, y = dat_v1_baseline, by = join_by("redcap_id" == "redcap_id"))
+
+# We perform a sanity check on the curated gender_category variable.
+# If gender was reported at V1 (baseline) then gender_category uses that value.
+# If gender was not reported at V1 (baseline) then gender_category uses what was reported in screener.
+# However, in the screener assessment, the variable called "gender" actually describes sex at birth
+# while the variable called "sex" actually describes gender.
+# Here, we check whether among participants who did not report gender at V1 (baseline)
+# whether they reported both "sex" and "gender" at screener and whether their
+# reported "sex" and "gender" at screener were equivalent.
+# The script below should output zero (0) for 
+# n_missing_screener_sex, n_missing_screener_gender, n_not_equal
+# if they are equivalent. We find that this is indeed the case, 
+# confirming that the curated gender_category variable followed the intended construction.
+dat_demogs %>%
+  filter(is.na(baseline_gender)) %>%
+  mutate(screener_gender_recoded = case_when(
+    screener_gender == "M" ~ 1,
+    screener_gender == "F" ~ 2,
+    screener_gender == "I" ~ 3,
+    (screener_gender == "U") | (screener_gender == -99) ~ NA_real_,
+    .default = NA_real_
+  )) %>%
+  select(mars_id, redcap_id, screener_gender, screener_gender_recoded, screener_sex, baseline_gender, gender_category) %>%
+  mutate(is_equal = if_else(screener_gender_recoded == screener_sex, 1, 0)) %>%
+  summarise(n_missing_screener_sex = sum(is.na(screener_sex)),
+            n_missing_screener_gender = sum(is.na(screener_gender)),
+            n_not_equal = sum(screener_gender_recoded != screener_sex))
+
+
+# # A tibble: 1 × 3
+#          n_missing_screener_sex    n_missing_screener_gender     n_not_equal
+#                           <int>                        <int>           <int>
+# 1                             0                            0              0
+
+
+dat_demogs <- dat_demogs %>%
+  mutate(baseline_tobacco_history = if_else(is.na(baseline_tobacco_history), screener_cpd, baseline_tobacco_history))
 
 # Create missing data indicators for counting number of participants 
 # having missing values in the demographic variables
